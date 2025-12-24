@@ -1,3 +1,5 @@
+kernel/configs/qemu-busybox-min.config
+
 # Rust 构建产物
 target/
 **/*.rs.bk
@@ -12,6 +14,8 @@ build/
 *.so
 *.dylib
 *.dll
+_install
+
 
 # IDE 和编辑器配置
 .vscode/
@@ -49,3 +53,7 @@ Desktop.ini
 *.su
 *.idb
 *.pdb
+
+# Submodule 目录
+busybox/
+linux/

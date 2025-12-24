@@ -9,15 +9,15 @@ TARGET ?=
 
 all: run
 
-run: build
+run: 
 	scripts/run.sh 
 
-build: setup
+build: 
 	scripts/build.sh -b $(BDIR) -k $(KDIR) -t "$(TARGET)"
 
 setup:
 	SUBMODULE_DEPTH=$(SUBMODULE_DEPTH) scripts/setup.sh
-	$(MAKE) -C $(KDIR)/rust M=$$PWD rust-analyzer
 
 clean:
 	$(MAKE) -C $(KDIR) M=$$PWD clean
+	$(MAKE) -C $(BDIR) M=$$PWD clean

@@ -41,20 +41,10 @@ while getopts "b:k:" opt; do
 	esac
 done
 
-# First, whe should build copy all of the .ko files to the busybox/_install directory so that they can be loaded
-# by the kernel.
-find . -name "*.ko" -exec cp {} "$BUSYBOX"/_install/ \;
-
-# now, we generate the initramfs
-pushd "$BUSYBOX"/_install > /dev/null || exit
-find . | cpio -o -H newc | gzip -9 >../initramfs.img
-
-popd > /dev/null || exit
-
-# now, we run the kernel in qemu
+# run the kernel in qemu
 qemu-system-x86_64 \
 	-kernel "$KERNEL"/arch/x86_64/boot/bzImage \
-	-initrd "$BUSYBOX"/initramfs.img \
+	-initrd "$BUSYBOX"/rootfs.img \
     -nographic \
     -machine q35 \
     -enable-kvm \
@@ -62,4 +52,4 @@ qemu-system-x86_64 \
     -cpu host \
     -m 4G \
     -nic user,model=virtio-net-pci,hostfwd=tcp::5555-:23,hostfwd=tcp::5556-:8080 \
-    -append "console=ttyS0,115200 loglevel=3"
+    -append "console=ttyS0,115200 loglevel=3 rdinit=/sbin/init"

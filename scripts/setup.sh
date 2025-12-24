@@ -35,24 +35,25 @@ setup_rust_in_kernel() {
 
 setup_kernel() {
 	# setup the kernel
-	ln -s qemu-busybox-min.config $KERNEL
+	ln -srf qemu-busybox-min.config $KERNEL/kernel/configs/qemu-busybox-min.config
 	pushd "$KERNEL" >/dev/null
 	setup_rust_in_kernel
 	make LLVM=1 CLIPPY=1 rustavailable
-	make LLVM=1 CLIPPY=1 defconfig ../qemu-busybox-min.config rust.config
-	make LLVM=1 CLIPPY=1 oldconfig
+	yes "" | make LLVM=1 CLIPPY=1 defconfig qemu-busybox-min.config rust.config || [ $? -eq 141 ]
+	yes "" | make LLVM=1 CLIPPY=1 olddefconfig || [ $? -eq 141 ]
+	make LLVM=1 CLIPPY=1 rust-analyzer
 	popd >/dev/null
 }
 
 setup_busybox() {
 	# setup busybox
 	pushd "$BUSYBOX" >/dev/null
-	make defconfig
+	yes "" | make defconfig || [ $? -eq 141 ]
 	sed -i 's/.*CONFIG_STATIC.*/CONFIG_STATIC=y/' .config
 	sed -i 's/.*CONFIG_STATIC_LIBGCC.*/CONFIG_STATIC_LIBGCC=y/' .config
 	sed -i 's/.*CONFIG_TC.*/CONFIG_TC=n/' .config
 	sed -i 's/.*CONFIG_FEATURE_TC_INGRESS.*/CONFIG_FEATURE_TC_INGRESS=n/' .config
-	make oldconfig
+	yes "" | make oldconfig || [ $? -eq 141 ]
 	popd >/dev/null
 }
 

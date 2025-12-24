@@ -8,21 +8,28 @@ usage() {
 }
 
 config_rootfs() {
-	pushd "$BUSYBOX"/_install >/dev/null
-	mkdir -p usr/share/udhcpc/ etc/init.d/
+	pushd _install >/dev/null
+	mkdir -p usr/share/udhcpc/ etc/init.d/ sbin
+    # Create init symlink if it doesn't exist
+    if [ ! -e sbin/init ]; then
+        ln -s ../bin/busybox sbin/init
+    fi
+	
 	cat <<EOF >etc/init.d/rcS
-mkdir -p /proc
+#!/bin/sh
+mkdir -p /proc /sys /dev
 mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+mkdir -p /dev/pts
+mount -t devpts nodev /dev/pts
 ifconfig lo up
 ifconfig eth0 up
 udhcpc -i eth0
-mount -t devtmpfs none /dev
-mkdir -p /dev/pts
-mount -t devpts nodev  /dev/pts
 telnetd -l /bin/sh
 clear
 EOF
-	chmod a+x etc/init.d/rcS bin/*
+	chmod a+x etc/init.d/rcS bin/* sbin/*
 
 	cat <<EOF >etc/inittab
 ::sysinit:/etc/init.d/rcS
@@ -39,6 +46,7 @@ EOF
 }
 
 KERNEL=./linux
+BUSYBOX=./busybox
 TARGET=
 
 while getopts b:k:t: option; do
@@ -57,14 +65,21 @@ fi
 
 echo "Building linux kernel..."
 pushd "$KERNEL" >/dev/null
-yes "" | make LLVM=1 CLIPPY=1 "$TARGET" -j"$(nproc)"
+yes "" | make LLVM=1 CLIPPY=1 "$TARGET" -j"$(nproc)" || [ $? -eq 141 ]
 popd >/dev/null
 
 echo "Building busybox initrd..."
-yes "" | make -j"$(nproc)"
+pushd "$BUSYBOX" >/dev/null
+yes "" | make -j"$(nproc)" || [ $? -eq 141 ]
 make install
-find _install/ | cpio -o -H newc | gzip > ./rootfs.img
-popd >/dev/null
 
 echo "Setting up the rootfs"
 config_rootfs
+
+echo "Packing rootfs image"
+pushd _install >/dev/null
+find . | cpio -o -H newc | gzip > ../rootfs.img
+popd >/dev/null
+popd >/dev/null
+
+echo "Done, you can now run 'make run'"
