@@ -1,11 +1,34 @@
-//! Module helper functions
+// SPDX-License-Identifier: GPL-2.0
+
+//! SKM is a simple linux kernel module written in rust.
 
 use kernel::prelude::*;
 
-const __LOG_PREFIX: &[u8] = b"woc2026_hello_from_rkm\0";
+module! {
+    type: SASTKernelModule,
+    name: "woc2026_hello_from_skm",
+    authors: ["fermata"],
+    description: "SKM is a simple linux kernel module written in rust",
+    license: "GPL",
+}
 
-/// Test function that prints a message
-#[allow(dead_code)]
-pub(crate) fn test() {
-    pr_info!("Rust LKM Template (test)\n");
+struct SASTKernelModule;
+
+impl kernel::Module for SASTKernelModule {
+    fn init(_module: &'static ThisModule) -> Result<Self> {
+        pr_info!("Welcome to SAST!\n");
+        pr_info!("Am I built-in? {}\n", !cfg!(MODULE));
+
+        // 使用 panic! 明确触发 panic
+        panic!("Intentional panic for testing!");
+
+        #[allow(unreachable_code)]
+        Ok(SASTKernelModule)
+    }
+}
+
+impl Drop for SASTKernelModule {
+    fn drop(&mut self) {
+        pr_info!("bye bye\n");
+    }
 }

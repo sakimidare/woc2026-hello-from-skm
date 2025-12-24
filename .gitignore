@@ -15,6 +15,10 @@ build/
 *.mod
 *.cmd
 *.o.d
+*.order
+*.symvers
+*.ko
+*.mod.c
 
 # IDE 和编辑器配置
 rust-project.json
@@ -57,3 +61,8 @@ Desktop.ini
 # Submodule 目录
 busybox/
 linux/
+src/woc2026_hello_from_rkm.ko
+src/woc2026_hello_from_rkm.ko
+src/modules.order
+src/modules.order
+src/modules.order

@@ -31,6 +31,13 @@ ifconfig lo up
 ifconfig eth0 up
 udhcpc -i eth0
 telnetd -l /bin/sh
+
+# Load kernel module if present
+if [ -f /lib/modules/woc2026_hello_from_skm.ko ]; then
+    echo "Loading woc2026_hello_from_skm module..."
+    insmod /lib/modules/woc2026_hello_from_skm.ko
+fi
+
 clear
 EOF
 	

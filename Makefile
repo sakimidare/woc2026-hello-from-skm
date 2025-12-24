@@ -17,7 +17,7 @@ BUSYBOX_INSTALL := $(BDIR)/_install
 all: run
 
 # 增量构建：分别检查并构建缺失的部分
-build: kernel busybox rootfs
+build: kernel busybox module-install rootfs
 
 # 强制完全重新构建
 rebuild: clean-build build
@@ -48,7 +48,7 @@ $(ROOTFS): $(BUSYBOX_BIN)
 	@cd $(BDIR)/_install && find . | cpio -o -H newc | gzip > ../rootfs.img
 
 # Rust 模块相关变量
-MODULE_NAME := woc2026_hello_from_rkm
+MODULE_NAME := woc2026_hello_from_skm
 MODULE_SRC := src
 MODULE_KO := $(MODULE_SRC)/$(MODULE_NAME).ko
 
@@ -65,10 +65,12 @@ module-clean:
 	$(MAKE) -C $(KDIR) M=$(PWD)/$(MODULE_SRC) clean
 
 # 安装模块到 rootfs
-module-install: module $(BUSYBOX_INSTALL)
+module-install: module rootfs
 	@echo "Installing module to rootfs..."
 	@mkdir -p $(BUSYBOX_INSTALL)/lib/modules
 	@cp $(MODULE_KO) $(BUSYBOX_INSTALL)/lib/modules/
+	@echo "Repacking rootfs with module..."
+	@cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img
 
 # 运行：确保构建产物存在
 run: build
