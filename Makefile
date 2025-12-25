@@ -2,6 +2,7 @@
 
 KDIR ?= ./linux
 BDIR ?= ./busybox
+TDIR ?= ./tools
 SUBMODULE_DEPTH ?= 1
 TARGET ?=
 NCPU ?= $(shell nproc)
@@ -12,12 +13,15 @@ ROOTFS := $(BDIR)/rootfs.img
 BUSYBOX_BIN := $(BDIR)/busybox
 BUSYBOX_INSTALL := $(BDIR)/_install
 
-.PHONY: all run build setup clean rebuild kernel busybox rootfs module module-clean module-install
+# 用户态程序名称
+USERSPACE_PROG := play_tetris
+
+.PHONY: all run build setup clean rebuild kernel busybox rootfs module module-clean module-install tools tools-clean tools-install
 
 all: run
 
 # 增量构建：分别检查并构建缺失的部分
-build: kernel busybox module-install rootfs
+build: kernel busybox module-install tools-install rootfs
 
 # 强制完全重新构建
 rebuild: clean-build build
@@ -69,7 +73,25 @@ module-install: module rootfs
 	@echo "Installing module to rootfs..."
 	@mkdir -p $(BUSYBOX_INSTALL)/lib/modules
 	@cp $(MODULE_KO) $(BUSYBOX_INSTALL)/lib/modules/
-	@echo "Repacking rootfs with module..."
+	@echo "Repacking rootfs..."
+	@cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img
+
+# 编译用户空间工具
+tools: $(TDIR)/$(USERSPACE_PROG).c
+	@echo "Building userspace program..."
+	@gcc -static -o $(TDIR)/$(USERSPACE_PROG).a $(TDIR)/$(USERSPACE_PROG).c -Wall
+
+# 清理用户空间工具
+tools-clean:
+	@echo "Cleaning userspace program..."
+	@rm -f $(TDIR)/$(USERSPACE_PROG).a
+
+# 安装工具到 rootfs
+tools-install: tools
+	@echo "Installing userspace tools..."
+	@cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/bin/$(USERSPACE_PROG)
+	@cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(USERSPACE_PROG)
+	@echo "Repacking rootfs..."
 	@cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img
 
 # 运行：确保构建产物存在
@@ -80,22 +102,13 @@ run: build
 setup:
 	SUBMODULE_DEPTH=$(SUBMODULE_DEPTH) scripts/setup.sh
 
-# 检查 Rust 工具链版本和可用性
-check-rust:
-	@echo "Checking Rust toolchain..."
-	@rustc --version || (echo "ERROR: rustc not found. Please install Rust." && exit 1)
-	@rustup --version || (echo "ERROR: rustup not found. Please install rustup." && exit 1)
-	@echo "Checking kernel Rust requirements..."
-	@cd $(KDIR) && scripts/min-tool-version.sh rustc && make LLVM=1 rustavailable
-	@echo "✓ Rust toolchain is ready"
-
 # 清理构建产物
 clean-build:
 	@echo "Cleaning build artifacts..."
 	@rm -f $(BZIMAGE) $(ROOTFS)
 	@rm -rf $(BUSYBOX_INSTALL)
 
-clean: clean-build module-clean
+clean: clean-build module-clean tools-clean
 	@echo "Cleaning kernel..."
 	@$(MAKE) -C $(KDIR) clean 2>/dev/null || true
 	@echo "Cleaning busybox..."

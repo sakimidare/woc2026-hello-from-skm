@@ -4,6 +4,8 @@
 
 use kernel::prelude::*;
 
+mod tetris;
+
 module! {
     type: SASTKernelModule,
     name: "woc2026_hello_from_skm",
@@ -12,18 +14,23 @@ module! {
     license: "GPL",
 }
 
-struct SASTKernelModule;
+struct SASTKernelModule {
+    _dev:
+        Pin<kernel::alloc::KBox<kernel::miscdevice::MiscDeviceRegistration<tetris::TetrisDevice>>>,
+}
 
 impl kernel::Module for SASTKernelModule {
     fn init(_module: &'static ThisModule) -> Result<Self> {
-        pr_info!("Welcome to SAST!\n");
+        pr_info!("Welcome to SAST WoC 2026!\n");
         pr_info!("Am I built-in? {}\n", !cfg!(MODULE));
 
-        // 使用 panic! 明确触发 panic
-        panic!("Intentional panic for testing!");
+        pr_info!("Tetris kernel module loaded!\n");
+        pr_info!("Device: /dev/tetris\n");
+        pr_info!("Controls: a=left, d=right, s=down, w=rotate, space=drop, r=reset\n");
 
-        #[allow(unreachable_code)]
-        Ok(SASTKernelModule)
+        let _dev = tetris::register_tetris_device()?;
+
+        Ok(Self { _dev })
     }
 }
 
