@@ -2,6 +2,7 @@
 	path = busybox
 	url = https://git.busybox.net/busybox/
 	shallow = true
+	branch = master
 
 [submodule "linux"]
 	path = linux
