@@ -94,6 +94,7 @@ jobs:
       - name: Collect Artifacts
         run: |
           mkdir -p dist/modules dist/bin
+          # 1. 拷贝内核到 dist 根目录 (方便 Docker 使用)
           cp linux/arch/x86_64/boot/bzImage dist/
           cp busybox/rootfs.img dist/
           cp src/*.ko dist/modules/ || true
@@ -101,25 +102,27 @@ jobs:
           cp magic/*.a dist/bin/ || true
           cp scripts/run.sh dist/
           
-          # 给予执行权限
           chmod +x dist/run.sh
           
-          # 关键参数修正逻辑
-          # 1. 移除 KVM (容器不支持)
-          sed -i 's/-enable-kvm//g' dist/run.sh
-          # 2. 修正 CPU 类型 (从物理直连改为模拟器最大化配置)
-          sed -i 's/-cpu host/-cpu max/g' dist/run.sh
-          # 3. 内存调小防止容器 OOM
-          sed -i 's/-m 4G/-m 1G/g' dist/run.sh
-          # 4. 最重要：修正 rdinit 路径！BusyBox 默认入口在 /init
-          sed -i 's/rdinit=\/sbin\/init/rdinit=\/init/g' dist/run.sh
+          # 2. 核心修复：修正 run.sh 里的内核路径变量
+          # 我们把 KERNEL=./linux 改成 KERNEL=.
+          sed -i 's|KERNEL=./linux|KERNEL=.|g' dist/run.sh
+          # 然后修改 QEMU 启动行，直接引用根目录的 bzImage (不再通过 arch/x86_64 路径)
+          sed -i 's|"$KERNEL"/arch/x86_64/boot/bzImage|"$KERNEL"/bzImage|g' dist/run.sh
           
-          # 自动生成 Dockerfile (保持你原有的逻辑)
+          # 3. 其他常规参数修正
+          sed -i 's/-enable-kvm//g' dist/run.sh
+          sed -i 's/-cpu host/-cpu max/g' dist/run.sh
+          sed -i 's/-m 4G/-m 1G/g' dist/run.sh
+          sed -i 's|rdinit=/sbin/init|rdinit=/init|g' dist/run.sh
+          
+          # 4. 优化 Dockerfile 启动参数
           cat <<EOF > dist/Dockerfile
           FROM alpine:latest
           RUN apk add --no-cache qemu-system-x86_64 bash
           WORKDIR /app
           COPY . .
+          # 注意：这里 -k . 代表当前目录就是内核所在目录
           CMD ["bash", "run.sh", "-k", ".", "-b", "."]
           EOF
 
