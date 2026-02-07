@@ -3,6 +3,7 @@
 KDIR ?= ./linux
 BDIR ?= ./busybox
 TDIR ?= ./tools
+MAGICDIR ?= ./magic
 SUBMODULE_DEPTH ?= 1
 TARGET ?=
 NCPU ?= $(shell nproc)
@@ -13,6 +14,7 @@ BUSYBOX_BIN := $(BDIR)/busybox
 BUSYBOX_INSTALL := $(BDIR)/_install
 
 USERSPACE_PROG := play_tetris
+MAGIC_PROG := magic
 
 ROOTFS_STAMP := .rootfs_stamp
 
@@ -20,7 +22,7 @@ ROOTFS_STAMP := .rootfs_stamp
 
 all: run
 
-build: kernel busybox $(ROOTFS) module-install tools-install repack-rootfs
+build: kernel busybox $(ROOTFS) module-install tools-install magic-install repack-rootfs
 
 rebuild: clean-build build
 
@@ -88,6 +90,20 @@ repack-rootfs: $(BUSYBOX_INSTALL)
 	cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img; \
 	touch $(ROOTFS_STAMP);
 
+magic: $(MAGICDIR)/$(MAGIC_PROG).c
+	@echo "Building my m@g1c program..."
+	@gcc -static -o $(MAGICDIR)/$(MAGIC_PROG).a $(MAGICDIR)/$(MAGIC_PROG).c -Wall -Wextra
+
+magic-clean:
+	@echo "Cleaning my m@g1c program..."
+	@rm -f $(MAGICDIR)/$(MAGIC_PROG).a
+
+magic-install: magic
+	@echo "Installing my m@g1c program..."
+	@cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/bin/$(MAGIC_PROG)
+	@cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(MAGIC_PROG)
+	@touch $(ROOTFS_STAMP)
+
 run: build
 	@echo "Starting QEMU..."
 	scripts/run.sh -b $(BDIR) -k $(KDIR)
@@ -100,7 +116,7 @@ clean-build:
 	@rm -f $(BZIMAGE) $(ROOTFS) $(ROOTFS_STAMP)
 	@rm -rf $(BUSYBOX_INSTALL)
 
-clean: clean-build module-clean tools-clean
+clean: clean-build module-clean tools-clean magic-clean
 	@echo "Cleaning kernel..."
 	@$(MAKE) -C $(KDIR) clean 2>/dev/null || true
 	@echo "Cleaning busybox..."
