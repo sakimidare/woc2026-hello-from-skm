@@ -18,7 +18,7 @@ MAGIC_PROG := magic
 
 ROOTFS_STAMP := .rootfs_stamp
 
-.PHONY: all run build setup clean rebuild kernel busybox rootfs module module-clean module-install tools tools-clean tools-install repack-rootfs
+.PHONY: all run build setup clean rebuild kernel busybox rootfs module module-clean module-install tools tools-clean tools-install repack-rootfs magic
 
 all: run
 
@@ -30,13 +30,13 @@ kernel: $(BZIMAGE)
 
 $(BZIMAGE):
 	@echo "Building linux kernel..."
-	@cd $(KDIR) && yes "" | make LLVM=1 CLIPPY=1 $(TARGET) -j$(NCPU) || [ $$? -eq 141 ]
+	@cd $(KDIR) &&  make LLVM=1 CLIPPY=1 $(TARGET) -j$(NCPU) || [ $$? -eq 141 ]
 
 busybox: $(BUSYBOX_BIN)
 
 $(BUSYBOX_BIN):
 	@echo "Building busybox..."
-	@cd $(BDIR) && yes "" | make -j$(NCPU) || [ $$? -eq 141 ]
+	@cd $(BDIR) &&  make -j$(NCPU) || [ $$? -eq 141 ]
 
 rootfs: $(ROOTFS)
 
@@ -58,18 +58,18 @@ module: kernel
 	@echo "Preparing Rust environment..."
 	@$(MAKE) -C $(KDIR) LLVM=1 CLIPPY=1 prepare
 	@echo "Building Rust kernel module..."
-	$(MAKE) -C $(KDIR) M=$(PWD)/$(MODULE_SRC) LLVM=1 modules
+	$(MAKE) -C $(KDIR) M=$(shell pwd)/$(MODULE_SRC) LLVM=1 modules
 
 module-clean:
 	@echo "Cleaning Rust module..."
 	$(MAKE) -C $(KDIR) M=$(PWD)/$(MODULE_SRC) clean
 
 module-install: module
-	@echo "Installing module to rootfs..."
-	@mkdir -p $(BUSYBOX_INSTALL)/lib/modules
-	@cp $(MODULE_KO) $(BUSYBOX_INSTALL)/lib/modules/
-	@cp $(MODULE_SRC)/magic.ko $(BUSYBOX_INSTALL)/lib/modules/
-	@touch $(ROOTFS_STAMP)
+	echo "Installing module to rootfs..."
+	mkdir -p $(BUSYBOX_INSTALL)/lib/modules
+	cp $(MODULE_KO) $(BUSYBOX_INSTALL)/lib/modules/
+	cp $(MODULE_SRC)/magic.ko $(BUSYBOX_INSTALL)/lib/modules/
+	touch $(ROOTFS_STAMP)
 
 tools: $(TDIR)/$(USERSPACE_PROG).c
 	@echo "Building userspace program..."
@@ -80,15 +80,19 @@ tools-clean:
 	@rm -f $(TDIR)/$(USERSPACE_PROG).a
 
 tools-install: tools
-	@echo "Installing userspace tools..."
-	@cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/bin/$(USERSPACE_PROG)
-	@cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(USERSPACE_PROG)
-	@touch $(ROOTFS_STAMP)
+	echo "Installing userspace tools..."
+	cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/bin/$(USERSPACE_PROG)
+	cp $(TDIR)/$(USERSPACE_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(USERSPACE_PROG)
+	touch $(ROOTFS_STAMP)
 
 repack-rootfs: $(BUSYBOX_INSTALL)
-	@echo "Packing rootfs image..."; \
-	cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img; \
-	touch $(ROOTFS_STAMP);
+	@echo "Fixing rootfs: creating /init link and essential dirs..."
+	mkdir -p $(BUSYBOX_INSTALL)/proc $(BUSYBOX_INSTALL)/sys $(BUSYBOX_INSTALL)/dev $(BUSYBOX_INSTALL)/etc
+	# 创建内核寻找的入口点 /init
+	ln -sf bin/busybox $(BUSYBOX_INSTALL)/init
+	@echo "Packing rootfs image..."
+	cd $(BUSYBOX_INSTALL) && find . | cpio -o -H newc | gzip > ../rootfs.img
+	touch $(ROOTFS_STAMP)
 
 magic: $(MAGICDIR)/$(MAGIC_PROG).c
 	@echo "Building my m@g1c program..."
@@ -99,10 +103,10 @@ magic-clean:
 	@rm -f $(MAGICDIR)/$(MAGIC_PROG).a
 
 magic-install: magic
-	@echo "Installing my m@g1c program..."
-	@cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/bin/$(MAGIC_PROG)
-	@cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(MAGIC_PROG)
-	@touch $(ROOTFS_STAMP)
+	echo "Installing my m@g1c program..."
+	cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/bin/$(MAGIC_PROG)
+	cp $(MAGICDIR)/$(MAGIC_PROG).a $(BUSYBOX_INSTALL)/usr/bin/$(MAGIC_PROG)
+	touch $(ROOTFS_STAMP)
 
 run: build
 	@echo "Starting QEMU..."

@@ -1,0 +1,148 @@
+name: Magic Kernel CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+      
+      - name: Force Update Submodules (Manual)
+        run: |
+          # 1. Linux Kernel: 正常同步，因为内核仓库没坏
+          git submodule init linux
+          git submodule update --init --recursive --depth 1 linux
+          
+          # 2. BusyBox: 物理绕过 submodule 错误，直接克隆 master
+          rm -rf busybox
+          git clone --depth 1 https://git.busybox.net/busybox busybox
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl make gcc clang lld python3 bc bison flex \
+            pkg-config cpio gzip qemu-system-x86 libelf-dev libssl-dev libclang-dev llvm
+
+      - name: Setup Rust Environment (Script Logic)
+        run: |
+          # 1. 安装 Rustup
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          
+          # 2. 探测内核要求的 Rust 版本 (对应脚本 setup_rust_in_kernel 逻辑)
+          K_RUST_VERSION=$(linux/scripts/min-tool-version.sh rustc)
+          echo "Kernel requires Rust: $K_RUST_VERSION"
+          
+          # 3. 设置全局和内核目录的 Override
+          rustup toolchain install $K_RUST_VERSION
+          rustup override set $K_RUST_VERSION
+          rustup component add rust-src
+          
+          # 4. 在内核目录也设置一次
+          cd linux && rustup override set $K_RUST_VERSION && cd ..
+
+      - name: Install Bindgen
+        run: |
+          cargo install bindgen-cli
+          bindgen --version
+        
+      - name: Setup Kernel (Script Logic)
+        run: |
+          # 1. 链接配置文件
+          ln -srf qemu-busybox-min.config linux/kernel/configs/qemu-busybox-min.config
+          
+          # 2. 生成内核配置 (LLVM=1 确保使用 clang/lld)
+          cd linux
+          make LLVM=1 rustavailable
+          # 对应脚本中的 yes "" | make ...
+          make LLVM=1 defconfig qemu-busybox-min.config rust.config
+          make LLVM=1 olddefconfig
+          cd ..
+
+      - name: Setup BusyBox (Script Logic)
+        run: |
+          cd busybox
+          # 1. 先生成基础配置
+          make defconfig
+          
+          # 2. 修改配置为静态编译
+          sed -i 's/.*CONFIG_STATIC.*/CONFIG_STATIC=y/' .config
+          sed -i 's/.*CONFIG_STATIC_LIBGCC.*/CONFIG_STATIC_LIBGCC=y/' .config
+          sed -i 's/.*CONFIG_TC.*/CONFIG_TC=n/' .config
+          sed -i 's/.*CONFIG_FEATURE_TC_INGRESS.*/CONFIG_FEATURE_TC_INGRESS=n/' .config
+          
+          # 3. 关键：使用 yes 命令强制通过交互，并忽略管道断开错误 (141)
+          yes "" | make oldconfig || [ $? -eq 141 ]
+          cd ..
+
+      - name: Build Project
+        run: |
+          source $HOME/.cargo/env
+          make build
+
+      - name: Collect Artifacts
+        run: |
+          mkdir -p dist/modules dist/bin
+          cp linux/arch/x86_64/boot/bzImage dist/
+          cp busybox/rootfs.img dist/
+          cp src/*.ko dist/modules/ || true
+          cp tools/*.a dist/bin/ || true
+          cp magic/*.a dist/bin/ || true
+          cp scripts/run.sh dist/
+          
+          # 给予执行权限
+          chmod +x dist/run.sh
+          
+          # 关键参数修正逻辑
+          # 1. 移除 KVM (容器不支持)
+          sed -i 's/-enable-kvm//g' dist/run.sh
+          # 2. 修正 CPU 类型 (从物理直连改为模拟器最大化配置)
+          sed -i 's/-cpu host/-cpu max/g' dist/run.sh
+          # 3. 内存调小防止容器 OOM
+          sed -i 's/-m 4G/-m 1G/g' dist/run.sh
+          # 4. 最重要：修正 rdinit 路径！BusyBox 默认入口在 /init
+          sed -i 's/rdinit=\/sbin\/init/rdinit=\/init/g' dist/run.sh
+          
+          # 自动生成 Dockerfile (保持你原有的逻辑)
+          cat <<EOF > dist/Dockerfile
+          FROM alpine:latest
+          RUN apk add --no-cache qemu-system-x86_64 bash
+          WORKDIR /app
+          COPY . .
+          CMD ["bash", "run.sh", "-k", ".", "-b", "."]
+          EOF
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: magic-kernel-release
+          path: ./dist
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push OCI Image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dist
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/magic-kernel:latest
